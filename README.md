@@ -8,7 +8,7 @@
 
 WerWolf takes the `RtlReportSilentProcessExit` technique (originally presented by Asaf Gilboa at DEF CON 30) and executes it as an in-memory Beacon Object File via a custom Python COFF loader. No executable on disk. No PowerShell. No script block logging. No AMSI.
 
-For the full technical deep-dive, research story, and how this improves on existing implementations, read the companion article on Medium: **[WerWolf: Taking Silent Process Exit from PowerShell Script to In-Memory BOF](#)** *(link coming soon)*
+For the full technical deep-dive, research story, and how this improves on existing implementations, read the companion article on Medium: **[WerWolf: Taking Silent Process Exit from PowerShell Script to In-Memory BOF](https://medium.com/@kimd15/werwolf-taking-silent-process-exit-from-powershell-script-to-in-memory-bof-and-why-edrs-still-978fab767c56?postPublishedType=repub)** *(link coming soon)*
 
 ## Usage
 
