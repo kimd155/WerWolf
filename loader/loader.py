@@ -14,6 +14,7 @@ Loading Pipeline:
 
 import ctypes
 import struct
+import time
 import logging
 from typing import Dict, Optional
 
@@ -181,6 +182,11 @@ class CoffLoader:
             self.output_lines.clear()
             go(args if args else None, len(args))
 
+            # Give async operations (WerFault) time before freeing memory.
+            # The BOF's string constants and data live in our VirtualAlloc block,
+            # and WerFault may still be reading registry paths or processing.
+            time.sleep(5)
+
             return "".join(self.output_lines)
 
         except Exception:
@@ -333,6 +339,7 @@ class CoffLoader:
                 continue
 
             # Unknown  - could be a CRT symbol or linker-generated
+            print(f"[!] Unresolved symbol: '{name}' (index {i})")
             logger.warning(f"  Unresolved symbol: '{name}' (index {i})")
 
         return addresses

