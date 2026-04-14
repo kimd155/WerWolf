@@ -47,7 +47,8 @@ WerWolf/
 └── bofs/
     ├── include/
     │   └── beacon.h     # BOF API header
-    └── wer_execute.o    # The WerWolf BOF (precompiled)
+    └── wer_execute.o    # The WerWolf BOF (Compiled)
+    └── wer_execute.c    # The WerWolf BOF (precompiled)
 ```
 
 ## Prior Art
